@@ -124,6 +124,44 @@ def compute_log_prob(coef_, intercept_visible_, intercept_hidden_, v_state):
             intercept_visible_, intercept_hidden_)
 
 
+def estimate_log_partition_function(coef_, intercept_visible_, intercept_hidden_, n_chains=100, beta=10000):
+    # Estimate the log-partition function of an RBM using Annealed Importance Sampling.
+
+    # If beta is an int, it is the number of steps.
+    # If it is a vector, it is a sequence of temperatures.
+    if len(beta) == 1:
+        n_temps = beta
+        beta = np.concatenate(np.linspace(0., .5, floor(n_temps*.1)),\
+                              np.linspace(.5, .9, floor(n_temps*.4)),\
+                              np.linspace(.9, 1., floor(n_temps*.5)));
+
+    # Initialize the vector which contains the estimate for each Markov chain.
+    ais = np.zeros(n_chains)
+
+
+    # Start by computing the log-partition function of the RBM with zeros weights
+    np.sum(np.log(1 + np.exp(intercept_visible_)))
+    AIS = sum(log(1+exp(rbm.Bv))) + rbm.Nh*log(2);
+
+
+
+def trainBinaryRBM(dataset, n_hidden, n_iterations):
+    # Get the number of visible units from the size of the dataset.
+    n_data, n_visible = dataset.shape
+
+    # Initialize the weights and the intercepts
+    coef_ = rng.randn(n_hidden, n_visible)/np.sqrt(n_visible)
+    intercept_visible_ = np.zeros(n_visible)
+    intercept_hidden_ = np.zeros(n_hidden)
+
+    # Train the model.
+    for iteration in xrange(n_iterations):
+        for datapoint in xrange(n_data):
+            compute_gradient(W, i_v, i_h, V, 1, 0.01)
+
+    return coef_, intercept_visible_, intercept_hidden_
+
+
 if __name__ == '__main__':
     V = np.array([1., 1., 0., 0.])
 
