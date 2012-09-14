@@ -61,6 +61,8 @@ def _sample_rbm(coef_, intercept_visible_, intercept_hidden_,
     """
     #visible->hidden
     if (direction == 'up'):
+        if state.ndim == 1:
+            intercept_hidden_ = intercept_hidden_  v_state[None, :]
         mean = sigmoid(np.dot(coef_, state) + intercept_hidden_)
 
     #hidden->visible
@@ -90,6 +92,9 @@ def compute_gradient(coef_, intercept_visible_, intercept_hidden_,
     ger, = linalg.get_blas_funcs(('ger',), (h_mean, v_state))
     ger(step_size, v_state, h_mean, a=coef_.T, overwrite_a=1)
 
+    intercept_visible_ += step_size*np.mean(v_state, axis=0)
+    intercept_hidden_ += step_size*np.mean(h_mean, axis=0)
+
     # import ipdb; ipdb.set_trace()
     v_state_neg, _ = _sample_rbm(coef_, intercept_visible_, intercept_hidden_,
                                 h_state, 'down')
@@ -100,6 +105,10 @@ def compute_gradient(coef_, intercept_visible_, intercept_hidden_,
     _, h_mean_neg = _sample_rbm(coef_, intercept_visible_, intercept_hidden_,
                                 v_state_neg, 'up')
     ger(-step_size, v_state_neg, h_mean_neg, a=coef_.T, overwrite_a=1)
+    intercept_visible_ -= step_size*np.mean(v_state_neg, axis=0)
+    intercept_hidden_ -= step_size*np.mean(h_mean_neg, axis=0)
+
+    return coef_, intercept_visible_, intercept_hidden_
 
 
 def _compute_free_energy(coef_, intercept_visible_, intercept_hidden_,
@@ -138,19 +147,53 @@ def estimate_log_partition_function(coef_, intercept_visible_, intercept_hidden_
 
     # If beta is an int, it is the number of steps.
     # If it is a vector, it is a sequence of temperatures.
-    if len(beta) == 1:
-        n_temps = beta
-        beta = np.concatenate(np.linspace(0., .5, floor(n_temps*.1)),\
-                              np.linspace(.5, .9, floor(n_temps*.4)),\
-                              np.linspace(.9, 1., floor(n_temps*.5)));
+    try:
+        n_steps = len(beta)
+    except:
+        # Beta is an int, convert to a set of temperatures.
+        n_steps = beta
+        beta = np.concatenate((np.linspace(0., .5, np.floor(n_steps*.1)),\
+                              np.linspace(.5, .9, np.floor(n_steps*.4)),\
+                              np.linspace(.9, 1., np.floor(n_steps*.5))), axis = 0);
 
     # Initialize the vector which contains the estimate for each Markov chain.
     ais = np.zeros(n_chains)
-
+    n_hidden = len(intercept_hidden_)
 
     # Start by computing the log-partition function of the RBM with zeros weights
-    np.sum(np.log(1 + np.exp(intercept_visible_)))
-    AIS = sum(log(1+exp(rbm.Bv))) + rbm.Nh*log(2);
+    ais = np.sum(np.log(1 + np.exp(intercept_visible_)) + n_hidden*np.log(2))
+    #AIS = sum(log(1+exp(rbm.Bv))) + rbm.Nh*log(2);
+
+    # Randomly generate hidden states and propagate them to the visible units.
+    h_state = rng.uniform(0, 1, (n_chains, n_hidden))
+
+    print h_state.shape
+    print coef_.shape
+    print intercept_visible_.shape
+    v_state = _sample_rbm(coef_, intercept_visible_, intercept_hidden_, h_state, 'down')
+    ais -= _compute_free_energy(coef_, intercept_visible_, intercept_hidden_, v_state)
+
+    # Store the original parameters.
+    orig_coef_ = coef_
+    orig_intercept_visible_ = intercept_visible_
+    orig_intercept_hidden_ = intercept_hidden_
+
+    coef_ = beta(step)*orig_coef_
+    intercept_visible_ = beta(step)*orig_intercept_visible_
+    intercept_hidden_ = beta(step)*orig_intercept_hidden_
+
+    # Do the remaining steps of the AIS procedure.
+    for step in xrange(n_steps - 1):
+        ais += _compute_free_energy(coef_, intercept_visible_, intercept_hidden_, v_state)
+        v_state = _gibbs_sampling(coef_, intercept_visible_, intercept_hidden_, v_state, 1)
+        ais -= _compute_free_energy(coef_, intercept_visible_, intercept_hidden_, v_state)
+    
+        if step%100 == 0:
+            print "Step ", step, "/", n_steps
+
+    ais += _compute_free_energy(orig_coef_, orig_intercept_visible_, orig_intercept_hidden_, v_state)
+
+    return np.mean(ais)
 
 
 
@@ -182,7 +225,10 @@ if __name__ == '__main__':
     i_h = np.zeros(6)
 
     print "Iteration 0, log-prob=", compute_log_prob(W, i_v, i_h, V)
-    for i in range(10000):
-        compute_gradient(W, i_v, i_h, V, 1, 0.01)
+    for i in range(100):
+        W, i_v, i_h = compute_gradient(W, i_v, i_h, V, 1, 1./(.0001*i + 1))
         print "Iteration ", i + 1, ", log-prob=", compute_log_prob(
             W, i_v, i_h, V)
+
+    print compute_log_partition_function(W, i_v, i_h)
+    print estimate_log_partition_function(W, i_v, i_h, n_chains=1, beta=10000)
