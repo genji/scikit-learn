@@ -68,10 +68,6 @@ def _sample_rbm(coef_, intercept_visible_, intercept_hidden_,
     """
     #visible->hidden
     if (direction == 'up'):
-        if state.ndim == 1:
-            #v_state hasn't been declared yet
-            #missing operand between intercept_hidden and v_state?
-            intercept_hidden_ = intercept_hidden_ v_state[None, :]
         mean = sigmoid(np.dot(coef_, state) + intercept_hidden_)
 
     #hidden->visible
